@@ -66,6 +66,7 @@ int main(int argc, char **argv)
   //wait for service to become available
   ros::service::waitForService("/mmWaveCommSrv/mmWaveCLI", 100000); 
   
+  int txAntennas = 0;
   myParams.open(argv[1]);
   
   if( myParams.is_open() )
@@ -95,8 +96,52 @@ int main(int argc, char **argv)
           {
             if (std::regex_search(srv.response.resp, std::regex("Done") )) 
             {
-              ROS_INFO("mmWaveQuickConfig: Command successful (mmWave sensor responded with 'Done')");
-	      break;
+                ROS_INFO("mmWaveQuickConfig: Command successful (mmWave sensor responded with 'Done')");
+              
+                size_t pos = 0;
+                int i = 0;
+
+                std::string cmd;
+                std::string token;
+                while ((pos = srv.request.comm.find(" ")) != std::string::npos) {
+                    token = srv.request.comm.substr(0, pos);
+                    if(!token.compare("chirpCfg")){
+                        txAntennas++;
+                    } 
+                    
+                    if(i == 0){
+                        cmd = token;
+                    } else if(!cmd.compare("frameCfg")){
+                        if(i==1){
+                            n.setParam("/mmWave_Manager/chirpStartIdx", std::stoi(token));
+                        } else if(i==2){
+                            n.setParam("/mmWave_Manager/chirpEndIdx", std::stoi(token));
+                        } else if(i==3){
+                            n.setParam("/mmWave_Manager/numLoops", std::stoi(token));
+                        } else if(i==4){
+                            n.setParam("/mmWave_Manager/numFrames", std::stoi(token));
+                        } else if(i==5){
+                            n.setParam("/mmWave_Manager/framePeriodicity", std::stof(token));
+                        }
+                    } else if(!cmd.compare("profileCfg")){
+                        if(i==2){
+                            n.setParam("/mmWave_Manager/startFreq", std::stof(token));
+                        } else if(i==3){
+                            n.setParam("/mmWave_Manager/idleTime", std::stof(token));
+                        } else if(i==5){
+                            n.setParam("/mmWave_Manager/rampEndTime", std::stof(token));
+                        } else if(i==8){
+                            n.setParam("/mmWave_Manager/freqSlopeConst", std::stof(token));
+                        } else if(i==10){
+                            n.setParam("/mmWave_Manager/numAdcSamples", std::stoi(token));
+                        } else if(i==11){
+                            n.setParam("/mmWave_Manager/digOutSampleRate", std::stof(token));
+                        } 
+                    }
+                    srv.request.comm.erase(0, pos + 1);
+                    i++;
+                }
+	            break;
             }
             else if (numTries == 0)
             {
@@ -120,7 +165,8 @@ int main(int argc, char **argv)
 	}
       }
     }
-
+    
+    n.setParam("/mmWave_Manager/numTxAnt", txAntennas);
     myParams.close();
   }
   else
