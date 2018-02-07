@@ -5,10 +5,13 @@
 <launch>
 
   <!-- Input arguments -->
+  <arg name="name" doc="Name for remapping RScan topic" default="radar"/>
   <arg name="device" doc="TI mmWave sensor device type [1443, 1642]"/>
   <arg name="config" doc="TI mmWave sensor device configuration [3d_best_range_res (not supported by 1642 EVM), 2d_best_range_res]"/>
   <arg name="max_allowed_elevation_angle_deg" default="90" doc="Maximum allowed elevation angle in degrees for detected object data [0 > value >= 90]}"/>
   <arg name="max_allowed_azimuth_angle_deg" default="90" doc="Maximum allowed azimuth angle in degrees for detected object data [0 > value >= 90]}"/>
+
+  <remap from="mmWaveDataHdl/RScan" to="$(arg name)/RScan"/>
 
   <!-- mmWave_Manager node -->
   <node pkg="ti_mmwave_rospkg" type="ti_mmwave_rospkg" name="mmWave_Manager" output="screen">
