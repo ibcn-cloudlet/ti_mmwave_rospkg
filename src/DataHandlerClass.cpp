@@ -46,6 +46,7 @@
 
 
 #include <DataHandlerClass.h>
+#include <RadarPoint.h>
 #include <pthread.h>
 #include <algorithm>
 #include "pcl_ros/point_cloud.h"
@@ -63,6 +64,41 @@ DataUARTHandler::DataUARTHandler(ros::NodeHandle* nh) : currentBufp(&pingPongBuf
     DataUARTHandler_pub = nodeHandle->advertise< sensor_msgs::PointCloud2 >("RScan", 100);
     maxAllowedElevationAngleDeg = 90; // Use max angle if none specified
     maxAllowedAzimuthAngleDeg = 90; // Use max angle if none specified
+    
+    int numAdcSamples;
+    int chirpEndIdx;
+    int chirpStartIdx;
+    int numLoops;
+    float digOutSampleRate;
+    float freqSlopeConst;
+    float startFreq;
+    float idleTime;
+    float rampEndTime;
+    
+    int numTxAnt;
+    while(!nh->getParam("/mmWave_Manager/numTxAnt", numTxAnt)){
+        // wait for param to be set
+    }
+
+    nh->getParam("/mmWave_Manager/numAdcSamples", numAdcSamples);
+    nh->getParam("/mmWave_Manager/chirpEndIdx", chirpEndIdx);
+    nh->getParam("/mmWave_Manager/chirpStartIdx", chirpStartIdx);
+    nh->getParam("/mmWave_Manager/numLoops", numLoops);
+    nh->getParam("/mmWave_Manager/digOutSampleRate", digOutSampleRate);
+    nh->getParam("/mmWave_Manager/freqSlopeConst", freqSlopeConst);
+    nh->getParam("/mmWave_Manager/startFreq", startFreq);
+    nh->getParam("/mmWave_Manager/idleTime", idleTime);
+    nh->getParam("/mmWave_Manager/rampEndTime", rampEndTime);    
+    
+    int numChirpsPerFrame = (chirpEndIdx - chirpStartIdx + 1)*numLoops;
+
+    numRangeBins = 1 << (int)std::ceil(std::log2(numAdcSamples));
+    numDopplerBins = numChirpsPerFrame/numTxAnt;
+    
+    rangeIdxToMeters = 300*digOutSampleRate/(2*freqSlopeConst*1e3*numRangeBins);
+    dopplerResolutionToMps = 3e8/(2*startFreq*1e9*(idleTime+rampEndTime)*1e-6*numChirpsPerFrame);
+    
+    ROS_INFO("Configured DataHandler numRangeBins: %d numDopplerBins: %d rangeIdxToM: %f dopplerResToMps: %f", numRangeBins, numDopplerBins, rangeIdxToMeters, dopplerResolutionToMps);
 }
 
 /*Implementation of setUARTPort*/
@@ -272,7 +308,7 @@ void *DataUARTHandler::sortIncomingData( void )
     float maxElevationAngleRatioSquared;
     float maxAzimuthAngleRatio;
     
-    boost::shared_ptr<pcl::PointCloud<pcl::PointXYZI>> RScan(new pcl::PointCloud<pcl::PointXYZI>);
+    boost::shared_ptr<pcl::PointCloud<RadarPoint>> RScan(new pcl::PointCloud<RadarPoint>);
     
     //wait for first packet to arrive
     pthread_mutex_lock(&countSync_mutex);
@@ -432,12 +468,11 @@ void *DataUARTHandler::sortIncomingData( void )
                 currentDatap += ( sizeof(mmwData.objOut.z) );
                 
                 //convert from Qformat to float(meters)
-                float temp[4];
+                float temp[6];
                 
                 temp[0] = (float) mmwData.objOut.x;
                 temp[1] = (float) mmwData.objOut.y;
                 temp[2] = (float) mmwData.objOut.z;
-                //temp[4] = //doppler 
                 
                 for(int j = 0; j < 3; j++)
                 {
@@ -450,11 +485,23 @@ void *DataUARTHandler::sortIncomingData( void )
                 // Convert intensity to dB
                 temp[3] = 10 * log10(mmwData.objOut.peakVal + 1);  // intensity
                 
+                // Convert rangeIdx to meters
+                temp[4] = mmwData.objOut.rangeIdx * rangeIdxToMeters;
+                
+                // Convert dopplerIdx to meters per second
+                int dopplerIdx = mmwData.objOut.dopplerIdx;
+                if(mmwData.objOut.dopplerIdx > numDopplerBins/2-1){
+                    dopplerIdx -= numDopplerBins;
+                }
+                temp[5] = dopplerIdx * dopplerResolutionToMps;
+                
                 // Map mmWave sensor coordinates to ROS coordinate system
                 RScan->points[i].x = temp[1];   // ROS standard coordinate system X-axis is forward which is the mmWave sensor Y-axis
                 RScan->points[i].y = -temp[0];  // ROS standard coordinate system Y-axis is left which is the mmWave sensor -(X-axis)
                 RScan->points[i].z = temp[2];   // ROS standard coordinate system Z-axis is up which is the same as mmWave sensor Z-axis
                 RScan->points[i].intensity = temp[3];
+                RScan->points[i].range = temp[4];
+                RScan->points[i].doppler = temp[5];
                
                 // Keep point if elevation and azimuth angles are less than specified max values
                 // (NOTE: The following calculations are done using ROS standard coordinate system axis definitions where X is forward and Y is left)

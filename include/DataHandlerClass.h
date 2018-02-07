@@ -147,6 +147,14 @@ private:
     
     ros::Publisher DataUARTHandler_pub;
     
+    /*Number of doppler bins*/
+    int numDopplerBins;
+    /*Number of range bins*/
+    int numRangeBins;
+    /*To convert rangeIdx to meters*/
+    float rangeIdxToMeters;
+    /*To convert dopplerIdx to m/s*/
+    float dopplerResolutionToMps;
 };
 
 #endif 
