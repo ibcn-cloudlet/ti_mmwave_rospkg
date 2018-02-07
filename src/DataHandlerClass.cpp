@@ -435,6 +435,7 @@ void *DataUARTHandler::sortIncomingData( void )
             {
                 maxAzimuthAngleRatio = -1;
             }
+            //ROS_INFO("----");
             //ROS_INFO("maxElevationAngleRatioSquared = %f", maxElevationAngleRatioSquared);
             //ROS_INFO("maxAzimuthAngleRatio = %f", maxAzimuthAngleRatio);
             //ROS_INFO("mmwData.numObjOut before = %d", mmwData.numObjOut);
@@ -468,32 +469,36 @@ void *DataUARTHandler::sortIncomingData( void )
                 currentDatap += ( sizeof(mmwData.objOut.z) );
                 
                 //convert from Qformat to float(meters)
+                int data[6];
+                data[0] = mmwData.objOut.x;
+                data[1] = mmwData.objOut.y;
+                data[2] = mmwData.objOut.z;
+                data[3] = mmwData.objOut.peakVal;
+                data[4] = mmwData.objOut.rangeIdx;
+                data[5] = mmwData.objOut.dopplerIdx;
+                for(int j = 0; j < 6; j++)
+                {
+                    if(data[j] > 32767)
+                        data[j] -= 65535;
+                }
+                
                 float temp[6];
-                
-                temp[0] = (float) mmwData.objOut.x;
-                temp[1] = (float) mmwData.objOut.y;
-                temp[2] = (float) mmwData.objOut.z;
-                
                 for(int j = 0; j < 3; j++)
                 {
-                    if(temp[j] > 32767)
-                        temp[j] -= 65535;
-                    
-                    temp[j] = temp[j] / pow(2,mmwData.xyzQFormat);
+                    temp[j] = ((float)data[j]) / pow(2,mmwData.xyzQFormat);
                  }   
                  
                 // Convert intensity to dB
-                temp[3] = 10 * log10(mmwData.objOut.peakVal + 1);  // intensity
+                temp[3] = 10 * log10(data[3] + 1);  // intensity
                 
                 // Convert rangeIdx to meters
-                temp[4] = mmwData.objOut.rangeIdx * rangeIdxToMeters;
+                temp[4] = data[4] * rangeIdxToMeters;
                 
                 // Convert dopplerIdx to meters per second
-                int dopplerIdx = mmwData.objOut.dopplerIdx;
-                if(mmwData.objOut.dopplerIdx > numDopplerBins/2-1){
-                    dopplerIdx -= numDopplerBins;
+                if(data[5] > numDopplerBins/2-1){
+                    data[5] -= numDopplerBins;
                 }
-                temp[5] = dopplerIdx * dopplerResolutionToMps;
+                temp[5] = data[5] * dopplerResolutionToMps;
                 
                 // Map mmWave sensor coordinates to ROS coordinate system
                 RScan->points[i].x = temp[1];   // ROS standard coordinate system X-axis is forward which is the mmWave sensor Y-axis
@@ -502,6 +507,8 @@ void *DataUARTHandler::sortIncomingData( void )
                 RScan->points[i].intensity = temp[3];
                 RScan->points[i].range = temp[4];
                 RScan->points[i].doppler = temp[5];
+               
+                //ROS_INFO("x %f y %f z %f intensity %f range %d %f doppler %d %f", RScan->points[i].x, RScan->points[i].y, RScan->points[i].z, RScan->points[i].intensity, mmwData.objOut.rangeIdx, RScan->points[i].range, mmwData.objOut.dopplerIdx, RScan->points[i].doppler);
                
                 // Keep point if elevation and azimuth angles are less than specified max values
                 // (NOTE: The following calculations are done using ROS standard coordinate system axis definitions where X is forward and Y is left)
