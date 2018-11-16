@@ -43,7 +43,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <stdio.h>
-#include <regex>
+#include <string>
 
 int main(int argc, char **argv)
 {
@@ -69,6 +69,10 @@ int main(int argc, char **argv)
   int txAntennas = 0;
   myParams.open(argv[1]);
   
+  // we need to search for Done string
+  std::string done ("Done");
+  std::string comment ("%");
+
   if( myParams.is_open() )
   {
     while( std::getline(myParams, srv.request.comm) )
@@ -76,9 +80,9 @@ int main(int argc, char **argv)
       // Remove Windows carriage-return if present
       srv.request.comm.erase(std::remove(srv.request.comm.begin(), srv.request.comm.end(), '\r'), srv.request.comm.end());
 
-      // Ignore comment lines (first non-space char is '%') or blank lines
-      if (std::regex_match(srv.request.comm, std::regex("^\\s*%.*") ) ||
-          std::regex_match(srv.request.comm, std::regex("^\\s*") ))
+      // Ignore comment lines (line contains '%') or blank lines
+      if ((srv.request.comm.find(comment)!=std::string::npos ) ||
+          (srv.request.comm.empty()))
       {
           ROS_INFO("mmWaveQuickConfig: Ignored blank or comment line: '%s'", srv.request.comm.c_str() );
       }
@@ -94,7 +98,8 @@ int main(int argc, char **argv)
 	{
           if( client.call(srv) )
           {
-            if (std::regex_search(srv.response.resp, std::regex("Done") )) 
+            std::size_t found = srv.response.resp.find(done);
+            if (found!=std::string::npos)
             {
                 ROS_INFO("mmWaveQuickConfig: Command successful (mmWave sensor responded with 'Done')");
               
